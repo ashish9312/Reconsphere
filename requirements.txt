@@ -1,16 +1,10 @@
 streamlit
-opencv-python
 Pillow
 requests
 beautifulsoup4
 lxml
-torpy
 fake_useragent
-scikit-learn
 numpy
-pandas
-aiohttp
 torch
 torchvision
 facenet-pytorch
-stem
