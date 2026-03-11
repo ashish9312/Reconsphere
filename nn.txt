@@ -1,0 +1,17 @@
+CyberIntelX/
+│
+done ├── app.py                      # 🚀 Main Streamlit app (UI controller)
+done ├── face_module.py              # 🧠 Handles face recognition & similarity scoring
+done├── reverse_search.py           # 🔎 Performs image reverse search using Bing/Reddit
+done├── face_compare.py             # 🧪 Compares uploaded face with scraped faces (AI logic)
+done├── email_leak_checker.py       # 📧 Checks real data leaks for email IDs
+Done├── phone_leak_checker.py       # 📱 Checks real data leaks for phone numbers
+Done├── dark_web_crawler.py         # 🌐 Uses Tor proxy to find leaks on dark web forums
+done ├── utils.py                    # 🛠️ Common helper functions (e.g., sanitization, display)
+│
+Done ├── assets/                     # 📂 Images, icons, sample face profiles
+│   ├── sample_images/
+│   └── icons/
+│
+Done ├── requirements.txt            # 📦 All Python packages for auto-install
+└── README.md                   # 📘 Project description, features, how to run/demo
