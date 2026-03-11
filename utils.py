@@ -59,11 +59,12 @@ def lookup_offline_leak(input_data: str):
     if direct_match:
         return direct_match
 
-    if is_valid_phone(input_data):
+    if is_valid_phone(input_data) or input_data.strip().startswith("+"):
         normalized_input = normalize_phone(input_data)
+        local_phone = normalized_input[-10:]
         for key, leaks in db.items():
             normalized_key = normalize_phone(key)
-            if len(normalized_key) >= 10 and normalized_key[-10:] == normalized_input:
+            if len(normalized_key) >= 10 and normalized_key[-10:] == local_phone:
                 return leaks
 
     return []
