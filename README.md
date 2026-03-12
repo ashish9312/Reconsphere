@@ -18,7 +18,7 @@ A powerful, real-time reconnaissance tool that combines **facial recognition**, 
 
 ## 🧱 Project Structure
 
-CyberIntelX/ │ ├── app.py # Main Streamlit app (UI controller) ├── face_module.py # Face upload, reverse image search, face match ├── reverse_search.py # Bing-based reverse image parser ├── face_compare.py # AI face comparison (face_recognition) ├── email_leak_checker.py # Email leak detection (HIBP + offline) ├── phone_leak_checker.py # Phone leak OSINT via dorks + offline ├── dark_web_crawler.py # Onion-site scanner (Tor proxy required) ├── utils.py # Common helper functions │ ├── assets/ │ ├── sample_images/ │ └── icons/ │ ├── requirements.txt # Python dependencies ├── README.md # Project documentation └── leak_database.json # Offline leak samples (for demo/testing)
+Reconsphere/ │ ├── app.py # AI Powered OSINT & Cyber Intelligence system ├── face_module.py # Face upload, reverse image search, face match ├── reverse_search.py # Bing-based reverse image parser ├── face_compare.py # AI face comparison (face_recognition) ├── email_leak_checker.py # Email leak detection (HIBP + offline) ├── phone_leak_checker.py # Phone leak OSINT via dorks + offline ├── dark_web_crawler.py # Onion-site scanner (Tor proxy required) ├── utils.py # Common helper functions │ ├── assets/ │ ├── sample_images/ │ └── icons/ │ ├── requirements.txt # Python dependencies ├── README.md # Project documentation └── leak_database.json # Offline leak samples (for demo/testing)
 
 
 ---
