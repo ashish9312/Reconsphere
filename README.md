@@ -1,4 +1,4 @@
-# 🛡️ CyberIntelX: AI-Powered OSINT & Leak Detection Suite
+# 🛡️ Reconsphere: AI-Powered OSINT & Cyber Intelligence
 
 A powerful, real-time reconnaissance tool that combines **facial recognition**, **reverse image search**, and **dark web breach analysis** — all in one web-based app built for cybersecurity enthusiasts, students, and professionals.
 
