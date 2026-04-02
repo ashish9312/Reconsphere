@@ -1,0 +1,59 @@
+{
+  "identities": [
+    {
+      "name": "Ananya Panday",
+      "type": "Celebrity",
+      "description": "Indian film actor and high-visibility public personality tracked for impersonation misuse signals.",
+      "risk_level": "Medium",
+      "images": [
+        "Watch Ananya Panday latest Photo Shoot (3).jpg"
+      ]
+    },
+    {
+      "name": "Subject Alpha",
+      "type": "Unknown",
+      "description": "Unverified subject from field collection; identity not formally confirmed.",
+      "risk_level": "High",
+      "images": [
+        "WhatsApp Image 2025-12-06 at 8.59.00 PM.jpeg"
+      ]
+    },
+    {
+      "name": "Arjun Rao",
+      "type": "Athlete",
+      "description": "Regional athlete profile monitored to detect fake endorsements and clone-account abuse.",
+      "risk_level": "Medium",
+      "images": [
+        "aa.PNG"
+      ]
+    },
+    {
+      "name": "Watchlist Delta",
+      "type": "Unknown",
+      "description": "Watchlist-linked subject with limited metadata; requires cautious confidence handling.",
+      "risk_level": "High",
+      "images": [
+        "29c4801a-b8d6-442e-a39c-7051e3d3beb5.png"
+      ]
+    },
+    {
+      "name": "Persona Echo",
+      "type": "Unknown",
+      "description": "Multi-image identity cluster used as a reference persona in internal intelligence triage.",
+      "risk_level": "Medium",
+      "images": [
+        "OIP.jpg",
+        "OIP.webp"
+      ]
+    },
+    {
+      "name": "Foxtrot Reference",
+      "type": "Unknown",
+      "description": "Synthetic reference identity used for calibration and false-positive monitoring.",
+      "risk_level": "Low",
+      "images": [
+        "Fotolia_41679858_cyber-investigation.jpg"
+      ]
+    }
+  ]
+}

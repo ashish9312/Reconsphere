@@ -1,5 +1,6 @@
 import hashlib
 import io
+import json
 import os
 
 import requests
@@ -14,6 +15,8 @@ from utils import is_valid_image_file, resize_image
 RESULTS_PER_PAGE = 3
 LOCAL_IMAGE_DB_DIR = os.path.join("assets", "sample_images")
 LOCAL_FACE_MATCH_THRESHOLD = 65.0
+IDENTITY_PROFILE_PATH = os.path.join("assets", "profiles.json")
+REQUIRED_PROFILE_FIELDS = ("name", "type", "description", "risk_level", "images")
 
 SCORE_FIELDS = [
     ("Overall", "overall_score"),
@@ -69,6 +72,129 @@ def render_score_breakdown(scores):
         st.caption(f"Raw similarity: {raw_similarity:.4f}")
 
 
+def normalize_filename(file_name):
+    return os.path.basename(str(file_name)).strip().lower()
+
+
+def load_identity_database(database_path=IDENTITY_PROFILE_PATH):
+    if not os.path.isfile(database_path):
+        return [], {}, []
+
+    try:
+        with open(database_path, "r", encoding="utf-8") as profile_file:
+            payload = json.load(profile_file)
+    except Exception as error:
+        print("Error loading identity profiles:", error)
+        return [], {}, []
+
+    if isinstance(payload, dict):
+        raw_profiles = payload.get("identities", [])
+    elif isinstance(payload, list):
+        raw_profiles = payload
+    else:
+        raw_profiles = []
+
+    profiles = []
+    for profile in raw_profiles:
+        if not isinstance(profile, dict):
+            continue
+
+        if any(required_field not in profile for required_field in REQUIRED_PROFILE_FIELDS):
+            continue
+
+        images = profile.get("images", [])
+        if not isinstance(images, list) or not images:
+            continue
+
+        profiles.append(
+            {
+                "name": str(profile["name"]),
+                "type": str(profile["type"]),
+                "description": str(profile["description"]),
+                "risk_level": str(profile["risk_level"]),
+                "images": [str(image_name) for image_name in images],
+            }
+        )
+
+    identity_index = {}
+    duplicate_images = []
+    for profile in profiles:
+        for image_name in profile["images"]:
+            normalized = normalize_filename(image_name)
+            if not normalized:
+                continue
+
+            if normalized in identity_index:
+                duplicate_images.append(normalized)
+                continue
+
+            identity_index[normalized] = profile
+
+    return profiles, identity_index, duplicate_images
+
+
+def resolve_identity_from_path(match_path, identity_index):
+    return identity_index.get(normalize_filename(match_path))
+
+
+def evaluate_dynamic_risk(similarity_score):
+    if similarity_score is None:
+        return "High Risk"
+    if similarity_score > 90:
+        return "Low Risk"
+    if 70 <= similarity_score <= 90:
+        return "Medium Risk"
+    return "High Risk"
+
+
+def build_recommended_actions(dynamic_risk, identity_type):
+    actions = ["Verify identity using at least one secondary source before action."]
+
+    if dynamic_risk == "Low Risk":
+        actions.append("Proceed with standard monitoring and keep this match on record.")
+    elif dynamic_risk == "Medium Risk":
+        actions.append("Flag for analyst review due to possible impersonation risk.")
+    else:
+        actions.append("Escalate immediately for deeper investigation and threat validation.")
+
+    if identity_type.strip().lower() in {"celebrity", "athlete", "public figure"}:
+        actions.append("Check social channels for fake account reuse or identity cloning.")
+    else:
+        actions.append("Cross-check related OSINT artifacts to confirm attribution.")
+
+    return actions
+
+
+def render_identity_insight_report(match_path, scores, identity_index, match_basis):
+    confidence_score = scores.get("overall_score")
+    dynamic_risk = evaluate_dynamic_risk(confidence_score)
+    identity = resolve_identity_from_path(match_path, identity_index)
+    identity_type = identity["type"] if identity else "Unknown"
+
+    st.markdown("#### Identity Insight Report")
+
+    if identity:
+        st.markdown(f"**Name:** {identity['name']}")
+        st.markdown(f"**Type:** {identity['type']}")
+        st.markdown(f"**Description:** {identity['description']}")
+        st.markdown(
+            f"**Risk Level:** {dynamic_risk} (Profile Baseline: {identity['risk_level']})"
+        )
+    else:
+        st.markdown("**Name:** Unknown Identity (Not mapped in profiles database)")
+        st.markdown("**Type:** Unknown")
+        st.markdown(
+            "**Description:** No intelligence profile is linked to this matched image filename."
+        )
+        st.markdown(f"**Risk Level:** {dynamic_risk}")
+
+    st.markdown(f"**Confidence Score:** {format_score(confidence_score)}")
+    st.markdown(f"**Match Basis:** {match_basis}")
+    st.markdown("**Recommended Actions:**")
+    for action in build_recommended_actions(dynamic_risk, identity_type):
+        st.markdown(f"- {action}")
+
+
 def find_local_database_matches(uploaded_path, uploaded_profile):
     exact_matches = []
     face_matches = []
@@ -103,17 +229,31 @@ def find_local_database_matches(uploaded_path, uploaded_profile):
     return exact_matches, face_matches
 
 
-def render_local_matches(exact_matches, face_matches):
+def render_local_matches(exact_matches, face_matches, identity_index):
     if exact_matches:
         st.success("Uploaded image already exists in the offline image database.")
-        for match_path in exact_matches:
-            st.markdown(f"- `{match_path}`")
+        for index, match_path in enumerate(exact_matches, start=1):
+            st.markdown(f"### Offline Exact Match #{index}")
+            st.markdown(f"**File:** `{match_path}`")
+            render_identity_insight_report(
+                match_path=match_path,
+                scores={"overall_score": 100.0},
+                identity_index=identity_index,
+                match_basis="Exact hash match in offline database",
+            )
+            st.markdown("---")
 
     if face_matches:
         st.info("Found similar face matches in the offline image database.")
         for index, match in enumerate(face_matches, start=1):
             st.image(match["image"], width=250, caption=f"Offline Match #{index}")
             render_score_breakdown(match["scores"])
+            render_identity_insight_report(
+                match_path=match["path"],
+                scores=match["scores"],
+                identity_index=identity_index,
+                match_basis="Offline face similarity match",
+            )
             st.markdown(f"**File:** `{match['path']}`")
             st.markdown("---")
 
@@ -140,12 +280,23 @@ def render_web_matches(match_results):
 
 def run_face_module():
     ensure_local_image_database()
+    identity_profiles, identity_index, duplicate_images = load_identity_database()
 
     st.header("Reverse Image Search + Face Match")
     st.markdown(
-        "Upload an image of a person to check the offline image database and get detailed face scores before searching the web."
+        "Upload an image to run offline face matching with intelligence-style identity insights, then continue with web search."
     )
     st.caption(f"Offline image database: `{LOCAL_IMAGE_DB_DIR}`")
+    st.caption(
+        f"Identity profile database: `{IDENTITY_PROFILE_PATH}` | Loaded profiles: {len(identity_profiles)}"
+    )
+
+    if duplicate_images:
+        duplicate_display = ", ".join(sorted(set(duplicate_images)))
+        st.warning(
+            "Duplicate image mappings detected in profiles database. "
+            f"First mapping retained for: `{duplicate_display}`"
+        )
 
     uploaded_file = st.file_uploader("Upload a face image", type=["jpg", "jpeg", "png"])
 
@@ -162,7 +313,7 @@ def run_face_module():
                 uploaded_path,
                 uploaded_profile,
             )
-            render_local_matches(exact_matches, offline_face_matches)
+            render_local_matches(exact_matches, offline_face_matches, identity_index)
 
             result_images = perform_reverse_search(uploaded_path)
             if not result_images:
