@@ -4,6 +4,8 @@ import io
 import json
 import os
 import re
+import tempfile
+from urllib.parse import urlparse
 
 import requests
 import streamlit as st
@@ -17,6 +19,7 @@ from utils import is_valid_image_file, resize_image
 RESULTS_PER_PAGE = 3
 LOCAL_IMAGE_DB_DIR = os.path.join("assets", "sample_images")
 LOCAL_FACE_MATCH_THRESHOLD = 65.0
+THRESHOLD_CONFIG_PATH = os.path.join("models", "thresholds.json")
 IDENTITY_PROFILE_PATH = os.path.join("assets", "profiles.json")
 REQUIRED_PROFILE_FIELDS = ("name", "type", "description", "risk_level", "images")
 
@@ -535,6 +538,13 @@ def generate_image_description_json(
 def render_formatted_description_output(description_payload):
     title = description_payload.get("title", "Unknown Object")
     description = description_payload.get("description", "")
+    confidence = str(description_payload.get("confidence", "low")).strip().lower()
+    confidence_label = confidence.capitalize() if confidence else "Low"
+    confidence_color = {
+        "high": "#10B981",
+        "medium": "#F59E0B",
+        "low": "#FF716C",
+    }.get(confidence, "#FF716C")
     safe_title = html.escape(str(title))
     safe_description = html.escape(str(description))
 
@@ -547,6 +557,9 @@ def render_formatted_description_output(description_payload):
         f'<div style="background:linear-gradient(135deg,rgba(27,32,40,0.85),rgba(15,20,26,0.96));'
         f'border:1px solid rgba(114,117,125,0.18);border-radius:12px;padding:1.25rem 1.35rem;'
         f'margin-bottom:1rem;">'
+        f'<p style="font-family:\'Inter\',sans-serif;font-size:.68rem;letter-spacing:.05em;'
+        f'color:{confidence_color};text-transform:uppercase;margin:0 0 .55rem 0;">'
+        f'Confidence: {confidence_label}</p>'
         f'<p style="font-family:\'Space Grotesk\',sans-serif;font-size:1.18rem;font-weight:700;'
         f'color:#F1F3FC;margin:0 0 .9rem 0;">{safe_title}</p>'
         f'<p style="font-family:\'Manrope\',sans-serif;font-size:.92rem;line-height:1.7;'
@@ -554,6 +567,70 @@ def render_formatted_description_output(description_payload):
         f'</div>',
         unsafe_allow_html=True,
     )
+
+
+def is_allowed_result_url(result_url):
+    try:
+        parsed = urlparse(str(result_url))
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme not in {"http", "https"}:
+            return False
+        if host in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}:
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def load_runtime_threshold_config():
+    config = {
+        "overall_score_threshold": float(LOCAL_FACE_MATCH_THRESHOLD),
+        "raw_similarity_threshold": None,
+        "source": "default",
+    }
+    if not os.path.exists(THRESHOLD_CONFIG_PATH):
+        return config
+
+    try:
+        with open(THRESHOLD_CONFIG_PATH, "r", encoding="utf-8") as threshold_file:
+            payload = json.load(threshold_file)
+    except Exception as error:
+        print("Failed to load threshold config:", error)
+        return config
+
+    raw_threshold = payload.get("best_threshold")
+    if isinstance(raw_threshold, (int, float)):
+        raw_threshold = float(raw_threshold)
+        if -1.0 <= raw_threshold <= 1.0:
+            config["raw_similarity_threshold"] = raw_threshold
+            config["source"] = "calibrated"
+        elif 0.0 <= raw_threshold <= 100.0:
+            config["overall_score_threshold"] = raw_threshold
+            config["source"] = "calibrated"
+
+    explicit_overall = payload.get("overall_score_threshold")
+    if isinstance(explicit_overall, (int, float)):
+        config["overall_score_threshold"] = float(explicit_overall)
+        config["source"] = "calibrated"
+
+    return config
+
+
+def score_passes_runtime_threshold(scores, threshold_config):
+    overall_threshold = float(
+        threshold_config.get("overall_score_threshold", LOCAL_FACE_MATCH_THRESHOLD)
+    )
+    overall_score = float(scores.get("overall_score") or 0.0)
+    if overall_score < overall_threshold:
+        return False
+
+    raw_threshold = threshold_config.get("raw_similarity_threshold")
+    if raw_threshold is None:
+        return True
+    raw_similarity = scores.get("raw_similarity")
+    if raw_similarity is None:
+        return False
+    return float(raw_similarity) >= float(raw_threshold)
 
 
 def evaluate_dynamic_risk(similarity_score):
@@ -642,7 +719,7 @@ def render_identity_insight_report(match_path, scores, identity_index, match_bas
     )
 
 
-def find_local_database_matches(uploaded_path, uploaded_profile):
+def find_local_database_matches(uploaded_path, uploaded_profile, threshold_config):
     exact_matches = []
     face_matches = []
     if not os.path.isdir(LOCAL_IMAGE_DB_DIR):
@@ -656,7 +733,7 @@ def find_local_database_matches(uploaded_path, uploaded_profile):
             with Image.open(local_path) as local_image:
                 local_rgb = local_image.convert("RGB")
                 scores = compare_face_profiles(uploaded_profile, local_rgb)
-            if scores["overall_score"] >= LOCAL_FACE_MATCH_THRESHOLD:
+            if score_passes_runtime_threshold(scores, threshold_config):
                 face_matches.append({
                     "path": local_path,
                     "image": resize_image(local_rgb.copy(), 300),
@@ -724,6 +801,7 @@ def render_web_matches(match_results):
 def run_face_module():
     ensure_local_image_database()
     _, identity_index, duplicate_images = load_identity_database()
+    threshold_config = load_runtime_threshold_config()
 
     # ── Header ───────────────────────────────────────────────────────
     st.markdown(
@@ -742,6 +820,15 @@ def run_face_module():
 
     # ── Status ───────────────────────────────────────────────────────
     st.metric("OFFLINE DATABASE", "Active")
+    threshold_caption = (
+        f"Matching threshold: overall >= {threshold_config['overall_score_threshold']:.1f}%"
+    )
+    if threshold_config.get("raw_similarity_threshold") is not None:
+        threshold_caption += (
+            f", raw similarity >= {threshold_config['raw_similarity_threshold']:.3f}"
+        )
+    threshold_caption += f" ({threshold_config['source']})"
+    st.caption(threshold_caption)
 
     if duplicate_images:
         dup_display = ", ".join(sorted(set(duplicate_images)))
@@ -755,47 +842,60 @@ def run_face_module():
         st.image(img, caption="Uploaded Image", use_column_width=True)
 
         with st.spinner("🔎 Scanning offline database and online sources..."):
-            uploaded_path = os.path.join("assets", "temp_uploaded.jpg")
-            img.save(uploaded_path)
-            uploaded_profile = extract_face_profile_from_path(uploaded_path)
-            exact_matches, offline_face_matches = find_local_database_matches(
-                uploaded_path, uploaded_profile
-            )
-            description_payload = generate_image_description_json(
-                image_path=uploaded_path,
-                uploaded_profile=uploaded_profile,
-                exact_matches=exact_matches,
-                face_matches=offline_face_matches,
-                identity_index=identity_index,
-            )
-            render_formatted_description_output(description_payload)
-            render_local_matches(exact_matches, offline_face_matches, identity_index)
+            file_ext = os.path.splitext(uploaded_file.name or "")[1].lower() or ".jpg"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
+                temp_file.write(uploaded_file.getbuffer())
+                uploaded_path = temp_file.name
 
-            result_images = perform_reverse_search(uploaded_path)
-            if not result_images:
-                if not exact_matches and not offline_face_matches:
-                    st.warning("⚠️ No offline or online matches found.")
-                return
+            try:
+                uploaded_profile = extract_face_profile_from_path(uploaded_path)
+                exact_matches, offline_face_matches = find_local_database_matches(
+                    uploaded_path, uploaded_profile, threshold_config
+                )
+                description_payload = generate_image_description_json(
+                    image_path=uploaded_path,
+                    uploaded_profile=uploaded_profile,
+                    exact_matches=exact_matches,
+                    face_matches=offline_face_matches,
+                    identity_index=identity_index,
+                )
+                render_formatted_description_output(description_payload)
+                render_local_matches(exact_matches, offline_face_matches, identity_index)
 
-            match_results = []
-            for result_url in result_images:
-                try:
-                    response = requests.get(result_url, timeout=5)
-                    web_image = Image.open(io.BytesIO(response.content)).convert("RGB")
-                    scores = compare_face_profiles(uploaded_profile, web_image)
-                    match_results.append({
-                        "url": result_url,
-                        "image": resize_image(web_image.copy(), 300),
-                        "scores": scores,
-                    })
-                except Exception as error:
-                    print("Error processing image:", error)
+                result_images = perform_reverse_search(uploaded_path)
+                if not result_images:
+                    if not exact_matches and not offline_face_matches:
+                        st.warning("⚠️ No offline or online matches found.")
+                    return
 
-            match_results = [m for m in match_results if m["scores"]["overall_score"] > 0]
-            if not match_results:
-                if not exact_matches and not offline_face_matches:
-                    st.warning("⚠️ No faces detected in found images.")
-                return
+                match_results = []
+                for result_url in result_images:
+                    if not is_allowed_result_url(result_url):
+                        continue
+                    try:
+                        response = requests.get(result_url, timeout=5)
+                        web_image = Image.open(io.BytesIO(response.content)).convert("RGB")
+                        scores = compare_face_profiles(uploaded_profile, web_image)
+                        match_results.append({
+                            "url": result_url,
+                            "image": resize_image(web_image.copy(), 300),
+                            "scores": scores,
+                        })
+                    except Exception as error:
+                        print("Error processing image:", error)
 
-            match_results.sort(key=lambda x: x["scores"]["overall_score"], reverse=True)
-            render_web_matches(match_results)
+                match_results = [
+                    m
+                    for m in match_results
+                    if score_passes_runtime_threshold(m["scores"], threshold_config)
+                ]
+                if not match_results:
+                    if not exact_matches and not offline_face_matches:
+                        st.warning("⚠️ No faces detected in found images.")
+                    return
+
+                match_results.sort(key=lambda x: x["scores"]["overall_score"], reverse=True)
+                render_web_matches(match_results)
+            finally:
+                if os.path.exists(uploaded_path):
+                    os.remove(uploaded_path)
