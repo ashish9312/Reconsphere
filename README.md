@@ -125,11 +125,17 @@ pip install -r requirements.txt
 
 Required **only** for the Dark Web Scanner module. The rest of the app works without Tor.
 
-**Linux / macOS:**
 ```bash
 sudo apt install tor   # Debian/Ubuntu
 tor &                  # Start Tor in the background
 ```
+
+**Run this command**
+```bash
+.\venv\Scripts\python.exe train_face_calibrator.py --allow-synthetic-genuine
+streamlit run app.py
+```
+
 
 **Windows:**
 1. Download the [Tor Expert Bundle](https://www.torproject.org/download/tor/).
