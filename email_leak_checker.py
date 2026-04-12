@@ -7,144 +7,113 @@ from utils import fetch_hibp_breach, is_valid_email, lookup_offline_leak
 def run_email_checker():
     # ── Header ───────────────────────────────────────────────────────
     st.markdown(
-        '<h2 style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; '
-        'background:linear-gradient(135deg,#00E5FF,#AF88FF); '
-        '-webkit-background-clip:text; -webkit-text-fill-color:transparent; '
-        'background-clip:text; margin-bottom:0.3rem;">'
+        '<h2 class="gradient-text" style="margin-bottom:0.3rem;">'
         "📧 Email Leak Checker</h2>",
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<p style="font-family:\'Manrope\',sans-serif; font-size:0.9rem; color:#A8ABB3; '
-        'margin-bottom:1.5rem;">Check if an email has been exposed in known data breaches.</p>',
+        '<p class="small-caps" style="color:#A8ABB3; margin-bottom:2rem;">'
+        "Intelligence scan for data breach exposure</p>",
         unsafe_allow_html=True,
     )
 
-    # ── Input Card ───────────────────────────────────────────────────
+    # ── Master Scan Container ────────────────────────────────────────
+    st.markdown('<div class="entrance-anim">', unsafe_allow_html=True)
+    
     st.markdown(
-        """<div style="
-            background: linear-gradient(135deg, rgba(32,38,47,0.5), rgba(15,20,26,0.7));
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(114,117,125,0.15);
-            border-radius: 12px;
-            padding: 1.75rem;
-            margin-bottom: 1.25rem;
-        ">
-            <p style="font-family:'Inter',sans-serif; font-size:0.65rem; font-weight:600;
-               text-transform:uppercase; letter-spacing:0.08em; color:#72757D; margin:0 0 0.75rem 0;">
-               🔍 BREACH INTELLIGENCE SCAN</p>
-        </div>""",
+        '<div class="glass-card" style="padding:1.75rem; margin-bottom:1.5rem;">'
+        '<p class="small-caps" style="margin-bottom:1rem;">🔍 BREACH INTELLIGENCE SCAN</p>',
         unsafe_allow_html=True,
     )
-
+    
     col1, col2 = st.columns([3, 2])
     with col1:
-        email_input = st.text_input(
-            "EMAIL ADDRESS",
-            "",
-            placeholder="someone@example.com",
-        )
+        email_input = st.text_input("EMAIL IDENTITY", placeholder="someone@example.com")
     with col2:
-        hibp_api_key = st.text_input(
-            "HIBP API KEY (REQUIRED FOR LIVE CHECK)",
-            type="password",
-            placeholder="Enter API key",
-        )
+        hibp_api_key = st.text_input("HIBP API ACCESS", type="password", placeholder="Enter API key")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Data Sources Info ────────────────────────────────────────────
+    # ── Source Intelligence ──────────────────────────────────────────
     src_col1, src_col2 = st.columns(2)
     with src_col1:
         st.markdown(
-            """<div style="
-                background: linear-gradient(135deg, rgba(27,32,40,0.8), rgba(15,20,26,0.9));
-                border: 1px solid rgba(114,117,125,0.15);
-                border-left: 3px solid #00E5FF;
-                border-radius: 10px;
-                padding: 1rem 1.25rem;
-            ">
-                <p style="font-family:'Inter',sans-serif; font-size:0.65rem; font-weight:600;
-                   text-transform:uppercase; letter-spacing:0.08em; color:#72757D; margin:0 0 0.4rem 0;">
-                   DATA SOURCE — PRIMARY</p>
-                <p style="font-family:'Manrope',sans-serif; font-size:0.92rem; color:#81ECFF;
-                   font-weight:600; margin:0 0 0.2rem 0;">Have I Been Pwned</p>
-                <p style="font-family:'Inter',sans-serif; font-size:0.72rem; color:#A8ABB3; margin:0;">
-                   Live API breach database</p>
-            </div>""",
-            unsafe_allow_html=True,
+            '<div class="glass-card" style="border-left: 3px solid #00F5FF !important; padding:1.2rem !important;">'
+            '<p class="small-caps" style="color:#72757D;">SOURCE: PRIMARY</p>'
+            '<p style="font-family:\'Space Grotesk\', sans-serif; font-size:1rem; color:#f8fafc; margin:0.3rem 0;">Have I Been Pwned</p>'
+            '<p style="font-size:0.75rem; color:#94a3b8; margin:0;">Live API Synchronization</p>'
+            '</div>',
+            unsafe_allow_html=True
         )
     with src_col2:
         st.markdown(
-            """<div style="
-                background: linear-gradient(135deg, rgba(27,32,40,0.8), rgba(15,20,26,0.9));
-                border: 1px solid rgba(114,117,125,0.15);
-                border-left: 3px solid #AF88FF;
-                border-radius: 10px;
-                padding: 1rem 1.25rem;
-            ">
-                <p style="font-family:'Inter',sans-serif; font-size:0.65rem; font-weight:600;
-                   text-transform:uppercase; letter-spacing:0.08em; color:#72757D; margin:0 0 0.4rem 0;">
-                   DATA SOURCE — FALLBACK</p>
-                <p style="font-family:'Manrope',sans-serif; font-size:0.92rem; color:#AF88FF;
-                   font-weight:600; margin:0 0 0.2rem 0;">Offline Leak Database</p>
-                <p style="font-family:'Inter',sans-serif; font-size:0.72rem; color:#A8ABB3; margin:0;">
-                   Local JSON breach samples</p>
-            </div>""",
-            unsafe_allow_html=True,
+            '<div class="glass-card" style="border-left: 3px solid #BF95FF !important; padding:1.2rem !important;">'
+            '<p class="small-caps" style="color:#72757D;">SOURCE: FALLBACK</p>'
+            '<p style="font-family:\'Space Grotesk\', sans-serif; font-size:1rem; color:#f8fafc; margin:0.3rem 0;">Offline Leak DB</p>'
+            '<p style="font-size:0.75rem; color:#94a3b8; margin:0;">Local JSON Intelligence</p>'
+            '</div>',
+            unsafe_allow_html=True
         )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("⚡ CHECK FOR BREACHES", use_container_width=True):
+    if st.button("⚡ EXECUTE NEURAL SCAN", use_container_width=True):
         if email_input:
-            with st.spinner("🔎 Scanning breach intelligence sources..."):
+            with st.spinner("🔎 Synchronizing with breach databases..."):
                 if is_valid_email(email_input):
                     result = fetch_hibp_breach(email_input, hibp_api_key)
                     status = result.get("status")
                     leaks = result.get("breaches", [])
 
                     if status == "breached":
-                        st.error(f"🚨 **BREACH DETECTED** — {len(leaks)} breach(es) found:")
+                        st.markdown(
+                            f'<div class="glass-card" style="border-left:4px solid #FF716C !important;">'
+                            f'<p class="small-caps" style="color:#FF716C;">🚨 CRITICAL: BREACH DETECTED ({len(leaks)})</p>',
+                            unsafe_allow_html=True
+                        )
                         for leak in leaks:
                             safe_leak = escape(str(leak))
                             st.markdown(
-                                f'<div style="background:rgba(255,113,108,0.06); '
-                                f"border-left:3px solid #FF716C; border-radius:6px; "
-                                f'padding:0.5rem 0.75rem; margin:0.3rem 0; '
-                                f"font-family:'Manrope',sans-serif; font-size:0.88rem; "
-                                f'color:#FFA8A3;">'
-                                f"● {safe_leak}</div>",
-                                unsafe_allow_html=True,
+                                f'<div style="background:rgba(255,113,108,0.05); border-radius:6px; padding:0.6rem 0.8rem; margin:0.4rem 0; font-family:\'Inter\',sans-serif; font-size:0.85rem; color:#FFA8A3;">'
+                                f'● {safe_leak}</div>',
+                                unsafe_allow_html=True
                             )
+                        st.markdown('</div>', unsafe_allow_html=True)
                     elif status == "clean":
-                        st.success("✅ **LIVE CHECK CLEAR** — Email not found in HIBP.")
+                        st.markdown(
+                            '<div class="glass-card" style="border-left:4px solid #4ade80 !important;">'
+                            '<p class="small-caps" style="color:#4ade80;">✅ STATUS: IDENTITY SECURE</p>'
+                            '<p style="color:#94a3b8; font-size:0.85rem; margin-top:0.5rem;">Email has not been identified in the HIBP live repository.</p>'
+                            '</div>',
+                            unsafe_allow_html=True
+                        )
                     else:
                         offline = lookup_offline_leak(email_input)
-                        st.warning(
-                            "⚠️ Live HIBP verification unavailable. Showing fallback coverage only."
+                        st.markdown(
+                            '<div class="glass-card" style="border-left:4px solid #fbbf24 !important;">'
+                            '<p class="small-caps" style="color:#fbbf24;">⚠️ SOURCE LIMITATION</p>'
+                            '<p style="color:#94a3b8; font-size:0.85rem; margin-top:0.5rem;">Live verification inaccessible. Falling back to local intelligence.</p>'
+                            '</div>',
+                            unsafe_allow_html=True
                         )
-                        if status == "missing_api_key":
-                            st.info("Add a valid HIBP API key to enable live breach verification.")
-                        elif result.get("message"):
-                            st.info(f"Live source status: {result['message']}")
-
+                        
                         if offline:
-                            st.error("🚨 **OFFLINE MATCH FOUND** — Present in local dataset:")
+                            st.markdown(
+                                '<div class="glass-card" style="border-left:4px solid #FF716C !important; margin-top:1rem;">'
+                                '<p class="small-caps" style="color:#FF716C;">🚨 OFFLINE MATCH DETECTED</p>',
+                                unsafe_allow_html=True
+                            )
                             for item in offline:
                                 safe_item = escape(str(item))
                                 st.markdown(
-                                    f'<div style="background:rgba(255,113,108,0.06); '
-                                    f"border-left:3px solid #FF716C; border-radius:6px; "
-                                    f'padding:0.5rem 0.75rem; margin:0.3rem 0; '
-                                    f"font-family:'Manrope',sans-serif; font-size:0.88rem; "
-                                    f'color:#FFA8A3;">'
-                                    f"● {safe_item}</div>",
-                                    unsafe_allow_html=True,
+                                    f'<div style="background:rgba(255,113,108,0.05); border-radius:6px; padding:0.6rem 0.8rem; margin:0.4rem 0; font-family:\'Inter\',sans-serif; font-size:0.85rem; color:#FFA8A3;">'
+                                    f'● {safe_item}</div>',
+                                    unsafe_allow_html=True
                                 )
-                        else:
-                            st.info(
-                                "ℹ️ No offline evidence found. Final verdict remains **UNKNOWN** without live source confirmation."
-                            )
+                            st.markdown('</div>', unsafe_allow_html=True)
                 else:
-                    st.warning("⚠️ Please enter a valid email address.")
+                    st.warning("⚠️ Invalid identity signature (email).")
         else:
-            st.warning("⚠️ Please enter an email address to scan.")
+            st.warning("⚠️ Access denied: No identity provided.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)

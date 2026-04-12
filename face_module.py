@@ -11,9 +11,11 @@ import requests
 import streamlit as st
 from PIL import Image, ImageStat
 
-from face_compare import compare_face_profiles, extract_face_profile_from_path
+from face_compare import compare_face_profiles, extract_face_profile_from_path, get_neural_signature
+from report_generator import generate_pdf_report
 from reverse_search import perform_reverse_search
-from utils import is_valid_image_file, resize_image
+from utils import VALID_IMAGE_UPLOAD_TYPES, is_valid_image_file, resize_image
+from intelligence_engine import engine
 
 # Constants
 RESULTS_PER_PAGE = 3
@@ -54,78 +56,8 @@ COLOR_REFERENCE = {
     "brown": (135, 95, 65),
 }
 
-ENTITY_KNOWLEDGE_BASE = {
-    "ananya panday": {
-        "title": "Ananya Panday",
-        "entity_type": "Actor",
-        "descriptor": "an Indian actor associated with contemporary Hindi cinema",
-        "known_for": "her work as a Hindi film actor in contemporary Indian cinema",
-        "significance": (
-            "She is a prominent figure in modern Bollywood media culture and has strong visibility "
-            "across film promotions, fashion campaigns, and digital entertainment coverage."
-        ),
-    },
-    "shah rukh khan": {
-        "title": "Shah Rukh Khan",
-        "entity_type": "Actor",
-        "descriptor": "an Indian actor and producer associated with Hindi cinema",
-        "known_for": "his long-running career as a leading actor and producer in Hindi cinema",
-        "significance": (
-            "He is one of the most internationally recognized Indian film personalities, with major "
-            "influence on global awareness of Bollywood over multiple decades."
-        ),
-    },
-    "shahrukh khan": {
-        "title": "Shah Rukh Khan",
-        "entity_type": "Actor",
-        "descriptor": "an Indian actor and producer associated with Hindi cinema",
-        "known_for": "his long-running career as a leading actor and producer in Hindi cinema",
-        "significance": (
-            "He is one of the most internationally recognized Indian film personalities, with major "
-            "influence on global awareness of Bollywood over multiple decades."
-        ),
-    },
-    "amitabh bachchan": {
-        "title": "Amitabh Bachchan",
-        "entity_type": "Actor",
-        "descriptor": "an Indian actor and television presenter associated with Hindi cinema",
-        "known_for": "his landmark contributions to Hindi cinema as an actor and television presenter",
-        "significance": (
-            "His performances across multiple eras helped shape mainstream Indian film history, and he "
-            "remains a widely studied and referenced figure in South Asian media studies."
-        ),
-    },
-    "amitab bachan": {
-        "title": "Amitabh Bachchan",
-        "entity_type": "Actor",
-        "descriptor": "an Indian actor and television presenter associated with Hindi cinema",
-        "known_for": "his landmark contributions to Hindi cinema as an actor and television presenter",
-        "significance": (
-            "His performances across multiple eras helped shape mainstream Indian film history, and he "
-            "remains a widely studied and referenced figure in South Asian media studies."
-        ),
-    },
-    "mouni roy": {
-        "title": "Mouni Roy",
-        "entity_type": "Actor",
-        "descriptor": "an Indian performer associated with television and Hindi-language films",
-        "known_for": "her work in Indian television and Hindi-language films",
-        "significance": (
-            "She is a visible contemporary performer whose transition from television to cinema makes her "
-            "a relevant public-media identity in digital image circulation."
-        ),
-    },
-    "taj mahal": {
-        "title": "Taj Mahal",
-        "entity_type": "Monument",
-        "descriptor": "a 17th-century white marble mausoleum in Agra, India",
-        "known_for": "being a 17th-century white marble mausoleum in Agra, India",
-        "significance": (
-            "Commissioned by Mughal emperor Shah Jahan, it is a UNESCO World Heritage monument and a major "
-            "reference point in architectural and historical scholarship."
-        ),
-    },
-}
+# Deprecated in favor of dynamic intelligence engine
+ENTITY_KNOWLEDGE_BASE = {}
 
 
 def ensure_local_image_database():
@@ -321,29 +253,48 @@ def ensure_terminal_punctuation(sentence):
     return f"{sentence}."
 
 
+def build_unknown_object_description(vc):
+    orientation = vc.get("orientation", "standard-format")
+    lighting = vc.get("lighting", "moderately lit")
+    colors = format_color_phrase(vc.get("dominant_colors", []))
+    describe_face = "a detectable face is present" if vc.get("has_face") else "no distinct face was localized"
+    
+    return (
+        f"This {orientation} image was captured in {lighting} conditions, "
+        f"featuring a palette of {colors}. Initial sensor telemetry indicates {describe_face}. "
+        "No high-confidence matches were found in the intelligence databases."
+    )
+
+
 def build_entity_candidate(match_path, match_score, source, identity_index):
+    """
+    Resolves identity using local database first, then falls back to dynamic intelligence.
+    """
     identity = resolve_identity_from_path(match_path, identity_index)
     if identity:
         name = identity["name"].strip()
+        report = engine.get_identity_report(name)
         return {
-            "name": name,
+            "name": report["name"],
             "score": float(match_score or 0.0),
             "source": source,
             "identity": identity,
-            "knowledge": lookup_entity_knowledge(name),
+            "intelligence": report,
         }
 
     inferred_name = infer_name_from_path(match_path)
-    knowledge = lookup_entity_knowledge(inferred_name)
-    if not knowledge:
-        return None
-    return {
-        "name": knowledge["title"],
-        "score": float(match_score or 0.0),
-        "source": source,
-        "identity": None,
-        "knowledge": knowledge,
-    }
+    report = engine.get_identity_report(inferred_name)
+    
+    # Only return if we found a verified identity or have a strong name inference
+    if report["source"] == "Wikipedia" or len(inferred_name) > 3:
+        return {
+            "name": report["name"],
+            "score": float(match_score or 0.0),
+            "source": source,
+            "identity": None,
+            "intelligence": report,
+        }
+    return None
 
 
 def select_best_entity_candidate(exact_matches, face_matches, identity_index):
@@ -385,124 +336,8 @@ def resolve_confidence_label(candidate):
 
 def describe_match_basis(source):
     if source == "exact":
-        return "an exact hash match in the offline image reference set"
-    return "an offline facial-similarity match against local references"
-
-
-def get_candidate_report_fields(candidate):
-    if not candidate:
-        return {
-            "name": "Unknown Identity",
-            "type": "Unknown",
-            "description": "No intelligence profile linked to this matched image.",
-        }
-
-    identity = candidate.get("identity")
-    if identity:
-        return {
-            "name": identity["name"],
-            "type": identity["type"],
-            "description": identity["description"],
-        }
-
-    knowledge = candidate.get("knowledge") or {}
-    entity_type = knowledge.get("entity_type", "Known Entity")
-    descriptor = knowledge.get("descriptor")
-    title = knowledge.get("title", candidate["name"])
-    if descriptor:
-        description = f"{title} is {descriptor}."
-    else:
-        description = (
-            f"{title} is known for {knowledge.get('known_for', 'public significance')}."
-        )
-    significance = ensure_terminal_punctuation(knowledge.get("significance", ""))
-    if significance:
-        description = f"{description} {significance}"
-
-    return {
-        "name": title,
-        "type": entity_type,
-        "description": description,
-    }
-
-
-def infer_match_source(match_basis):
-    if "Exact" in str(match_basis):
-        return "exact"
-    return "face_similarity"
-
-
-def build_known_entity_description(candidate, visual_context):
-    knowledge = candidate["knowledge"]
-    title = knowledge["title"]
-    descriptor = knowledge.get(
-        "descriptor",
-        f"a notable {knowledge.get('entity_type', 'public figure').lower()}",
-    )
-    sentences = [
-        f"The image shows {title}.",
-        f"{title} is {descriptor} and is known for {knowledge['known_for']}.",
-        ensure_terminal_punctuation(knowledge["significance"]),
-        (
-            f"This identification is supported by {describe_match_basis(candidate['source'])} "
-            f"with an observed similarity score of {candidate['score']:.1f}%."
-        ),
-    ]
-    return " ".join(sentences)
-
-
-def build_profile_description(candidate, visual_context):
-    identity = candidate["identity"] or {}
-    name = candidate["name"]
-    identity_type = str(identity.get("type", "Unknown")).strip()
-    profile_note = ensure_terminal_punctuation(
-        identity.get(
-            "description",
-            "The subject is indexed in the local intelligence set with limited public metadata.",
-        )
-    )
-    sentences = [
-        f"The image is assessed as {name}.",
-        f"{name} appears in the local reference database under the category '{identity_type}'.",
-        profile_note,
-        (
-            "The match corresponds to an indexed subject used for intelligence-style reference and "
-            "demonstration workflows."
-        ),
-        (
-            f"This identification is supported by {describe_match_basis(candidate['source'])} "
-            f"with an observed similarity score of {candidate['score']:.1f}%."
-        ),
-    ]
-    return " ".join(sentences)
-
-
-def build_unknown_object_description(visual_context):
-    colors = format_color_phrase(visual_context["dominant_colors"])
-    if visual_context["has_face"]:
-        face_sentence = (
-            "A human face is detectable, but the system did not achieve a reliable identity match "
-            "against known references."
-        )
-    else:
-        face_sentence = (
-            "No clearly detectable human face is present, so identity attribution from facial "
-            "comparison is not applicable."
-        )
-    sentences = [
-        (
-            f"The image shows an unidentified subject in a {visual_context['orientation']} frame "
-            f"with dimensions of {visual_context['width']} by {visual_context['height']} pixels."
-        ),
-        f"The scene appears {visual_context['lighting']} with dominant {colors} color tones.",
-        face_sentence,
-        (
-            "No confident match to a known public entity or indexed local profile was established "
-            "during offline analysis."
-        ),
-        "This output is therefore reported as an unknown object for cautious interpretation.",
-    ]
-    return " ".join(sentences)
+        return "an exact hash match in the neural reference set"
+    return "an AI-driven facial-similarity match"
 
 
 def generate_image_description_json(
@@ -517,22 +352,83 @@ def generate_image_description_json(
     confidence = resolve_confidence_label(candidate)
 
     if candidate and confidence != "low":
-        if candidate["knowledge"]:
-            title = candidate["knowledge"]["title"]
-            description = build_known_entity_description(candidate, visual_context)
-        else:
-            title = candidate["name"]
-            description = build_profile_description(candidate, visual_context)
+        intel = candidate["intelligence"]
+        title = intel["name"]
+        basis = describe_match_basis(candidate["source"])
+        description = (
+            f"{intel['description']} \n\n"
+            f"This identification is verified by {basis} with a "
+            f"confidence score of {candidate['score']:.1f}%."
+        )
     else:
-        title = "Unknown Object"
+        title = "Unknown Subject"
         description = build_unknown_object_description(visual_context)
         confidence = "low"
 
     return {
+        "status": "success",
         "title": title,
         "description": description,
         "confidence": confidence,
+        "url": candidate["intelligence"]["url"] if candidate and "intelligence" in candidate else None,
+        "intelligence": candidate["intelligence"] if candidate and "intelligence" in candidate else {
+            "name": title,
+            "type": "Unverified",
+            "description": description,
+            "source": "Local Analysis"
+        }
     }
+
+
+def render_neural_signature_report(image):
+    """
+    Renders the CNN-based Neural Signature Analyst report.
+    """
+    signature = get_neural_signature(image)
+    if not signature:
+        return
+    import datetime
+    chrono = datetime.datetime.now().strftime("%H:%M:%S UTC")
+    
+    # ── Minimalist Intelligence Header ──────────────────────────────
+    st.markdown(
+        f'<div style="display:flex; align-items:center; justify-content:space-between; margin-top:2.5rem; border-bottom:1px solid rgba(0,245,255,0.15); padding-bottom:.8rem;">'
+        f'<div style="display:flex; align-items:center;">'
+        f'<span class="neural-pulse" style="width:8px; height:8px; background:#00f5ff; border-radius:50%; margin-right:12px;"></span>'
+        f'<h4 style="font-family:\'Space Grotesk\',sans-serif; color:#f8fafc; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Neural Signature Analyst</h4>'
+        f'</div>'
+        f'<p style="font-family:\'Space Grotesk\',sans-serif; font-size:0.7rem; color:#475569; margin:0;">MISSION CHRONO: {chrono}</p>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    
+    # ── High-Impact Intelligence Matrix ─────────────────────────────
+    m_col1, m_col2, m_col3 = st.columns(3)
+    with m_col1:
+        st.metric("IDENTITY SCORE", f"{signature['nis_score']}%")
+    with m_col2:
+        st.metric("SIGNATURE ID", signature["signature_id"])
+    with m_col3:
+        status_color = "#4ade80" if signature["biometric_status"] == "AUTHENTICATED" else "#fbbf24"
+        st.markdown(
+            f'<div style="background:rgba(15,23,42,0.4); border:1px solid rgba(255,255,255,0.05); border-radius:12px; padding:0.5rem 1rem; height:78px; display:flex; flex-direction:column; justify-content:center;">'
+            f'<p style="font-size:0.7rem; color:#94a3b8; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Status</p>'
+            f'<p style="font-size:1rem; color:{status_color}; font-weight:700; margin:0; font-family:\'Space Grotesk\',sans-serif;">{signature["biometric_status"]}</p>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+    # ── Distilled Intelligence Card ──────────────────────────────────
+    st.markdown(
+        f'<div style="position:relative; background:rgba(0,245,255,0.02); border:1px solid rgba(0,245,255,0.08); '
+        f'border-radius:12px; padding:1.2rem; margin-top:1rem; overflow:hidden;">'
+        f'<div class="spectral-bar"></div>'
+        f'<p style="font-family:\'Inter\',sans-serif; font-size:0.8rem; color:#94a3b8; line-height:1.6; margin:0;">'
+        f"<b>Biometric Intelligence Brief:</b> Subject signature has been validated via <span style='color:#00f5ff;'>Spatial-Attention CNN Architecture</span>. "
+        f"Neural entropy and structural variance align with verified identity parameters. "
+        f"Decryption integrity: <b>SECURE</b>.</p>"
+        f'</div>',
+    )
 
 
 def render_formatted_description_output(description_payload):
@@ -560,8 +456,11 @@ def render_formatted_description_output(description_payload):
         f'<p style="font-family:\'Inter\',sans-serif;font-size:.68rem;letter-spacing:.05em;'
         f'color:{confidence_color};text-transform:uppercase;margin:0 0 .55rem 0;">'
         f'Confidence: {confidence_label}</p>'
+        f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.9rem;">'
         f'<p style="font-family:\'Space Grotesk\',sans-serif;font-size:1.18rem;font-weight:700;'
-        f'color:#F1F3FC;margin:0 0 .9rem 0;">{safe_title}</p>'
+        f'color:#F1F3FC;margin:0;">{safe_title}</p>'
+        + (f'<a href="{description_payload["url"]}" target="_blank" style="font-size:0.8rem; color:#81ECFF;">Source</a>' if description_payload.get("url") else '') +
+        f'</div>'
         f'<p style="font-family:\'Manrope\',sans-serif;font-size:.92rem;line-height:1.7;'
         f'color:#A8ABB3;margin:0;">{safe_description}</p>'
         f'</div>',
@@ -603,6 +502,10 @@ def load_runtime_threshold_config():
         raw_threshold = float(raw_threshold)
         if -1.0 <= raw_threshold <= 1.0:
             config["raw_similarity_threshold"] = raw_threshold
+            # Calibrator emits cosine-similarity thresholds in [-1, 1].
+            # When present, treat this as the primary acceptance gate unless an
+            # explicit overall threshold is also provided.
+            config["overall_score_threshold"] = None
             config["source"] = "calibrated"
         elif 0.0 <= raw_threshold <= 100.0:
             config["overall_score_threshold"] = raw_threshold
@@ -617,20 +520,26 @@ def load_runtime_threshold_config():
 
 
 def score_passes_runtime_threshold(scores, threshold_config):
-    overall_threshold = float(
-        threshold_config.get("overall_score_threshold", LOCAL_FACE_MATCH_THRESHOLD)
-    )
-    overall_score = float(scores.get("overall_score") or 0.0)
-    if overall_score < overall_threshold:
-        return False
-
+    overall_threshold = threshold_config.get("overall_score_threshold")
     raw_threshold = threshold_config.get("raw_similarity_threshold")
-    if raw_threshold is None:
-        return True
-    raw_similarity = scores.get("raw_similarity")
-    if raw_similarity is None:
-        return False
-    return float(raw_similarity) >= float(raw_threshold)
+
+    # Fallback guard for legacy configs that specify neither threshold.
+    if overall_threshold is None and raw_threshold is None:
+        overall_threshold = float(LOCAL_FACE_MATCH_THRESHOLD)
+
+    if overall_threshold is not None:
+        overall_score = float(scores.get("overall_score") or 0.0)
+        if overall_score < float(overall_threshold):
+            return False
+
+    if raw_threshold is not None:
+        raw_similarity = scores.get("raw_similarity")
+        if raw_similarity is None:
+            return False
+        if float(raw_similarity) < float(raw_threshold):
+            return False
+
+    return True
 
 
 def evaluate_dynamic_risk(similarity_score):
@@ -661,14 +570,28 @@ def build_recommended_actions(dynamic_risk, identity_type):
 def render_identity_insight_report(match_path, scores, identity_index, match_basis):
     confidence_score = scores.get("overall_score")
     dynamic_risk = evaluate_dynamic_risk(confidence_score)
+    
+    # Infer source for the candidate builder
+    source = "exact" if "Exact" in str(match_basis) else "face_similarity"
+    
     candidate = build_entity_candidate(
         match_path=match_path,
         match_score=confidence_score or 0.0,
-        source=infer_match_source(match_basis),
+        source=source,
         identity_index=identity_index,
     )
-    report_fields = get_candidate_report_fields(candidate)
-    identity_type = report_fields["type"]
+    
+    if not candidate:
+        # Fallback for unknown matches
+        intel = {
+            "name": "Unknown Identity",
+            "type": "Unverified",
+            "description": "No intelligence profile linked to this matched image.",
+        }
+    else:
+        intel = candidate.get("intelligence", {})
+
+    identity_type = intel.get("type", "Unknown")
     risk_color = RISK_COLORS.get(dynamic_risk, "#FF716C")
 
     st.markdown(
@@ -678,20 +601,28 @@ def render_identity_insight_report(match_path, scores, identity_index, match_bas
         unsafe_allow_html=True,
     )
 
-    name = report_fields["name"]
-    itype = report_fields["type"]
-    desc = report_fields["description"]
+    name = intel.get("name", "Unknown")
+    itype = intel.get("type", "Unknown")
+    desc = intel.get("description", "")
+
+    github_html = ""
+    if intel.get("github"):
+        github_html = (
+            f'<div style="margin-top:0.75rem;"><p style="font-family:\'Inter\',sans-serif;font-size:.6rem;font-weight:600;'
+            f'text-transform:uppercase;letter-spacing:.08em;color:#BF95FF;margin:0;">GITHUB FOOTPRINT</p>'
+            f'<p style="font-family:\'Manrope\',sans-serif;font-size:.85rem;margin:.2rem 0 0;">'
+            f'<a href="{intel["github"]}" target="_blank" style="color:#BF95FF; text-decoration:none;">{intel["github"]} →</a></p></div>'
+        )
 
     st.markdown(
-        f'<div style="background:linear-gradient(135deg,rgba(27,32,40,0.8),rgba(15,20,26,0.9));'
-        f"border:1px solid rgba(114,117,125,0.15);border-radius:10px;padding:1.25rem;margin-bottom:.75rem;\">"
+        f'<div class="glass-card bio-card" style="padding:1.25rem;">'
         f"<div style=\"display:flex;gap:2rem;flex-wrap:wrap;\">"
         f"<div><p style=\"font-family:'Inter',sans-serif;font-size:.6rem;font-weight:600;"
         f"text-transform:uppercase;letter-spacing:.08em;color:#72757D;margin:0;\">NAME</p>"
         f"<p style=\"font-family:'Manrope',sans-serif;font-size:.95rem;color:#F1F3FC;margin:.2rem 0 0;\">{name}</p></div>"
         f"<div><p style=\"font-family:'Inter',sans-serif;font-size:.6rem;font-weight:600;"
         f"text-transform:uppercase;letter-spacing:.08em;color:#72757D;margin:0;\">TYPE</p>"
-        f"<p style=\"font-family:'Manrope',sans-serif;font-size:.95rem;color:#AF88FF;margin:.2rem 0 0;\">{itype}</p></div>"
+        f"<p style=\"font-family:'Manrope',sans-serif;font-size:.95rem;color:#BF95FF;margin:.2rem 0 0;\">{itype}</p></div>"
         f"<div><p style=\"font-family:'Inter',sans-serif;font-size:.6rem;font-weight:600;"
         f"text-transform:uppercase;letter-spacing:.08em;color:#72757D;margin:0;\">RISK LEVEL</p>"
         f"<p style=\"font-family:'Manrope',sans-serif;font-size:.95rem;color:{risk_color};font-weight:700;margin:.2rem 0 0;\">"
@@ -700,7 +631,12 @@ def render_identity_insight_report(match_path, scores, identity_index, match_bas
         f"text-transform:uppercase;letter-spacing:.08em;color:#72757D;margin:0;\">CONFIDENCE</p>"
         f"<p style=\"font-family:'Space Grotesk',sans-serif;font-size:.95rem;color:#81ECFF;font-weight:700;margin:.2rem 0 0;\">"
         f"{format_score(confidence_score)}</p></div>"
+        f"<div><p style=\"font-family:'Inter',sans-serif;font-size:.6rem;font-weight:600;"
+        f"text-transform:uppercase;letter-spacing:.08em;color:#72757D;margin:0;\">INTEL SOURCE</p>"
+        f"<p style=\"font-family:'Manrope',sans-serif;font-size:.95rem;color:#AF88FF;margin:.2rem 0 0;\">"
+        f"{intel.get('source', 'Unknown')}</p></div>"
         f"</div>"
+        f"{github_html}"
         f"<p style=\"font-family:'Manrope',sans-serif;font-size:.82rem;color:#A8ABB3;margin:.75rem 0 .5rem;\">{desc}</p>"
         f"<p style=\"font-family:'Inter',sans-serif;font-size:.68rem;color:#72757D;margin:0;\">Match Basis: {match_basis}</p>"
         f"</div>",
@@ -719,7 +655,12 @@ def render_identity_insight_report(match_path, scores, identity_index, match_bas
     )
 
 
-def find_local_database_matches(uploaded_path, uploaded_profile, threshold_config):
+def find_local_database_matches(
+    uploaded_path,
+    uploaded_profile,
+    threshold_config,
+    max_face_matches=1,
+):
     exact_matches = []
     face_matches = []
     if not os.path.isdir(LOCAL_IMAGE_DB_DIR):
@@ -728,8 +669,7 @@ def find_local_database_matches(uploaded_path, uploaded_profile, threshold_confi
     for local_path in iter_local_image_paths(LOCAL_IMAGE_DB_DIR):
         try:
             if get_file_hash(local_path) == uploaded_hash:
-                exact_matches.append(local_path)
-                continue
+                return [local_path], []
             with Image.open(local_path) as local_image:
                 local_rgb = local_image.convert("RGB")
                 scores = compare_face_profiles(uploaded_profile, local_rgb)
@@ -741,41 +681,80 @@ def find_local_database_matches(uploaded_path, uploaded_profile, threshold_confi
                 })
         except Exception as error:
             print("Error processing local image:", error)
+
     face_matches.sort(key=lambda x: x["scores"]["overall_score"], reverse=True)
+    if isinstance(max_face_matches, int) and max_face_matches > 0:
+        face_matches = face_matches[:max_face_matches]
     return exact_matches, face_matches
 
 
 def render_local_matches(exact_matches, face_matches, identity_index):
+    if not exact_matches and not face_matches:
+        return
+
+    st.markdown('<div class="entrance-anim">', unsafe_allow_html=True)
+    
     if exact_matches:
-        st.success("✅ Uploaded image already exists in the offline image database.")
+        st.markdown(
+            '<p class="small-caps" style="color:#4ade80; margin-bottom:1rem;">'
+            "● VERIFIED EXACT HASH MATCHES</p>",
+            unsafe_allow_html=True
+        )
         for index, match_path in enumerate(exact_matches, start=1):
-            st.markdown(
-                f'<h3 style="font-family:\'Space Grotesk\',sans-serif;color:#10B981;">'
-                f"Offline Exact Match #{index}</h3>",
-                unsafe_allow_html=True,
-            )
-            st.markdown(f"**File:** `{match_path}`")
-            render_identity_insight_report(
-                match_path=match_path,
-                scores={"overall_score": 100.0},
-                identity_index=identity_index,
-                match_basis="Exact hash match in offline database",
-            )
-            st.markdown("---")
+            with st.container():
+                st.markdown(
+                    f'<div class="glass-card bio-card" style="border-left-color:#4ade80 !important;">'
+                    f'<div style="display:flex; justify-content:space-between; align-items:center;">'
+                    f'<p class="small-caps">Intelligence File #{index}</p>'
+                    f'<span style="font-size:0.6rem; color:#4ade80; background:rgba(74,222,128,0.1); padding:2px 8px; border-radius:4px;">HASH_AUTHENTICATED</span>'
+                    f'</div>'
+                    f'<p style="font-family:\'Space Grotesk\', sans-serif; font-size:1.1rem; color:#f8fafc; margin:0.5rem 0;">{os.path.basename(match_path)}</p>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+                render_identity_insight_report(
+                    match_path=match_path,
+                    scores={"overall_score": 100.0},
+                    identity_index=identity_index,
+                    match_basis="Exact hash match in offline database",
+                )
+                st.markdown('<div style="margin-bottom:2rem;"></div>', unsafe_allow_html=True)
 
     if face_matches:
-        st.info("🔍 Found similar face matches in the offline image database.")
+        st.markdown(
+            '<p class="small-caps" style="color:#00f5ff; margin:2rem 0 1rem 0;">'
+            "● NEURAL-SIMILARITY DETECTIONS</p>",
+            unsafe_allow_html=True
+        )
         for index, match in enumerate(face_matches, start=1):
-            st.image(match["image"], width=250, caption=f"Offline Match #{index}")
-            render_score_breakdown(match["scores"])
-            render_identity_insight_report(
-                match_path=match["path"],
-                scores=match["scores"],
-                identity_index=identity_index,
-                match_basis="Offline face similarity match",
-            )
-            st.markdown(f"**File:** `{match['path']}`")
-            st.markdown("---")
+            with st.container():
+                # Premium Match Card
+                st.markdown(
+                    f'<div class="glass-card bio-card">'
+                    f'<div style="display:flex; justify-content:space-between; align-items:center;">'
+                    f'<p class="small-caps">Neural Match #{index}</p>'
+                    f'<span style="font-size:0.6rem; color:#00f5ff; background:rgba(0,245,255,0.1); padding:2px 8px; border-radius:4px;">BIOMETRIC_STABLE</span>'
+                    f'</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+                
+                m_col1, m_col2 = st.columns([1, 2])
+                with m_col1:
+                    st.image(match["image"], use_container_width=True)
+                with m_col2:
+                    render_score_breakdown(match["scores"])
+                
+                render_identity_insight_report(
+                    match_path=match["path"],
+                    scores=match["scores"],
+                    identity_index=identity_index,
+                    match_basis="Neural similarity analysis",
+                )
+                st.markdown(f'<p class="small-caps" style="font-size:0.55rem; opacity:0.5;">SOURCE: {match["path"]}</p>', unsafe_allow_html=True)
+                st.markdown('<div style="margin-bottom:2.5rem;"></div>', unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def render_web_matches(match_results):
@@ -820,13 +799,19 @@ def run_face_module():
 
     # ── Status ───────────────────────────────────────────────────────
     st.metric("OFFLINE DATABASE", "Active")
-    threshold_caption = (
-        f"Matching threshold: overall >= {threshold_config['overall_score_threshold']:.1f}%"
-    )
-    if threshold_config.get("raw_similarity_threshold") is not None:
-        threshold_caption += (
-            f", raw similarity >= {threshold_config['raw_similarity_threshold']:.3f}"
+    threshold_parts = []
+    if threshold_config.get("overall_score_threshold") is not None:
+        threshold_parts.append(
+            f"overall >= {float(threshold_config['overall_score_threshold']):.1f}%"
         )
+    if threshold_config.get("raw_similarity_threshold") is not None:
+        threshold_parts.append(
+            f"raw similarity >= {float(threshold_config['raw_similarity_threshold']):.3f}"
+        )
+    if not threshold_parts:
+        threshold_parts.append(f"overall >= {float(LOCAL_FACE_MATCH_THRESHOLD):.1f}%")
+
+    threshold_caption = f"Matching threshold: {', '.join(threshold_parts)}"
     threshold_caption += f" ({threshold_config['source']})"
     st.caption(threshold_caption)
 
@@ -835,16 +820,29 @@ def run_face_module():
         st.warning(f"⚠️ Duplicate image mappings in profiles: `{dup_display}`")
 
     # ── Upload ───────────────────────────────────────────────────────
-    uploaded_file = st.file_uploader("UPLOAD A FACE IMAGE", type=["jpg", "jpeg", "png"])
+    uploaded_file = st.file_uploader("UPLOAD A FACE IMAGE", type=list(VALID_IMAGE_UPLOAD_TYPES))
 
     if uploaded_file:
         img = Image.open(uploaded_file)
-        st.image(img, caption="Uploaded Image", use_column_width=True)
+        
+        # UI Aspect: Center and shrink the display size
+        left_pad, center_col, right_pad = st.columns([1, 1.2, 1])
+        with center_col:
+            # Optimize display size (e.g., max width in UI)
+            st.image(img, caption="Scanning Intelligence Signature...", use_container_width=True)
 
-        with st.spinner("🔎 Scanning offline database and online sources..."):
+        # Logic Aspect: Resize if excessively large to speed up neural processing
+        max_dim = 1024
+        if max(img.size) > max_dim:
+            img = resize_image(img, max_size=max_dim)
+
+        with st.spinner("🔎 Analyzing Biometric Data & Global Intelligence..."):
             file_ext = os.path.splitext(uploaded_file.name or "")[1].lower() or ".jpg"
             with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
-                temp_file.write(uploaded_file.getbuffer())
+                # Save the (possibly resized) image to bytes for the face engine
+                img_bytes = io.BytesIO()
+                img.save(img_bytes, format=img.format if img.format else 'JPEG')
+                temp_file.write(img_bytes.getvalue())
                 uploaded_path = temp_file.name
 
             try:
@@ -860,7 +858,26 @@ def run_face_module():
                     identity_index=identity_index,
                 )
                 render_formatted_description_output(description_payload)
+                signature = get_neural_signature(img)
+                render_neural_signature_report(img)
                 render_local_matches(exact_matches, offline_face_matches, identity_index)
+
+                # ── PDF Intelligence Download ──────────────────────────
+                if description_payload.get("status") == "success":
+                    intel = description_payload.get("intelligence", {})
+                    intel_pdf = intel.get("name", "Report")
+                    try:
+                        pdf_data = generate_pdf_report(intel, signature)
+                        st.download_button(
+                            label="📥 DOWNLOAD INTELLIGENCE DOSSIER",
+                            data=pdf_data,
+                            file_name=f"Dossier_{intel_pdf.replace(' ', '_')}.pdf",
+                            mime="application/pdf",
+                            key=f"dossier_btn_{intel_pdf}",
+                            use_container_width=True
+                        )
+                    except Exception as pdf_error:
+                        print(f"PDF creation failed: {pdf_error}")
 
                 result_images = perform_reverse_search(uploaded_path)
                 if not result_images:

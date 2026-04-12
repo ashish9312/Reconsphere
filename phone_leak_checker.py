@@ -29,19 +29,6 @@ def generate_osint_dorks(phone):
 
 SEARCH_ENGINE_ICONS = {"DuckDuckGo": "🦆", "Bing": "🔵", "Google": "🔍"}
 
-def _glass_card(border_color, label, title, title_color, subtitle):
-    return (
-        f'<div style="background:linear-gradient(135deg,rgba(27,32,40,0.8),rgba(15,20,26,0.9));'
-        f"border:1px solid rgba(114,117,125,0.15);border-left:3px solid {border_color};"
-        f'border-radius:10px;padding:1rem 1.25rem;">'
-        f"<p style=\"font-family:'Inter',sans-serif;font-size:0.65rem;font-weight:600;"
-        f'text-transform:uppercase;letter-spacing:0.08em;color:#72757D;margin:0 0 .4rem 0;">{label}</p>'
-        f"<p style=\"font-family:'Manrope',sans-serif;font-size:0.85rem;color:{title_color};"
-        f'font-weight:600;margin:0;">{title}</p>'
-        f"<p style=\"font-family:'Inter',sans-serif;font-size:0.7rem;color:#A8ABB3;margin:.3rem 0 0 0;\">{subtitle}</p>"
-        f"</div>"
-    )
-
 def normalize_phone_for_lookup(country_code, raw_phone):
     raw_phone = str(raw_phone or "").strip()
     digits = re.sub(r"\D", "", raw_phone)
@@ -54,57 +41,75 @@ def normalize_phone_for_lookup(country_code, raw_phone):
 
     return f"+{full_digits}", digits
 
-
 def run_phone_checker():
+    # ── Header ───────────────────────────────────────────────────────
     st.markdown(
-        '<h2 style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;'
-        'background:linear-gradient(135deg,#00E5FF,#AF88FF);'
-        '-webkit-background-clip:text;-webkit-text-fill-color:transparent;'
-        'background-clip:text;margin-bottom:.3rem;">'
+        '<h2 class="gradient-text" style="margin-bottom:0.3rem;">'
         "📱 Phone Number Leak Checker</h2>",
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<p style="font-family:\'Manrope\',sans-serif;font-size:.9rem;color:#A8ABB3;margin-bottom:1.5rem;">'
+        '<p class="small-caps" style="color:#A8ABB3; margin-bottom:2rem;">'
         "Select a country code and enter a phone number to check for offline evidence and OSINT leads.</p>",
         unsafe_allow_html=True,
     )
 
+    # ── Master Scan Container ────────────────────────────────────────
+    st.markdown('<div class="entrance-anim">', unsafe_allow_html=True)
+    
     st.markdown(
-        '<div style="background:linear-gradient(135deg,rgba(32,38,47,0.5),rgba(15,20,26,0.7));'
-        "backdrop-filter:blur(12px);border:1px solid rgba(114,117,125,0.15);"
-        'border-radius:12px;padding:1.75rem;margin-bottom:.5rem;">'
-        "<p style=\"font-family:'Inter',sans-serif;font-size:.65rem;font-weight:600;"
-        'text-transform:uppercase;letter-spacing:.08em;color:#72757D;margin:0;">'
-        "📡 PHONE INTELLIGENCE SCAN</p></div>",
+        '<div class="glass-card" style="padding:1.75rem; margin-bottom:1.5rem;">'
+        '<p class="small-caps" style="margin-bottom:1rem;">📡 PHONE INTELLIGENCE SCAN</p>',
         unsafe_allow_html=True,
     )
 
-    c1, c2 = st.columns([1, 3])
+    c1, c2 = st.columns([1, 2])
     with c1:
-        country_label = st.selectbox("COUNTRY CODE", list(COUNTRY_CODE_OPTIONS.keys()), index=0)
+        country_label = st.selectbox("REGION CODE", list(COUNTRY_CODE_OPTIONS.keys()), index=0)
     with c2:
-        phone_input = st.text_input("PHONE NUMBER", "", placeholder="9876543210")
+        phone_input = st.text_input("IDENTIFIER (DIGITS ONLY)", "", placeholder="9876543210")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Source Intelligence ──────────────────────────────────────────
+    i1, i2 = st.columns(2)
+    with i1:
+        st.markdown(
+            '<div class="glass-card" style="border-left: 3px solid #00F5FF !important; padding:1.2rem !important; height:110px;">'
+            '<p class="small-caps" style="color:#72757D;">METHOD: OSINT ENGINES</p>'
+            '<p style="font-family:\'Space Grotesk\', sans-serif; font-size:1rem; color:#f8fafc; margin:0.3rem 0;">Web Reconnaissance</p>'
+            '<p style="font-size:0.75rem; color:#94a3b8; margin:0;">DuckDuckGo · Bing · Google</p>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+    with i2:
+        st.markdown(
+            '<div class="glass-card" style="border-left: 3px solid #10B981 !important; padding:1.2rem !important; height:110px;">'
+            '<p class="small-caps" style="color:#72757D;">METHOD: OFFLINE DB</p>'
+            '<p style="font-family:\'Space Grotesk\', sans-serif; font-size:1rem; color:#4ade80; margin:0.3rem 0;">Identity Persistence</p>'
+            '<p style="font-size:0.75rem; color:#94a3b8; margin:0;">Local JSON Intelligence Core</p>'
+            '</div>',
+            unsafe_allow_html=True
+        )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("⚡ CHECK FOR LEAKS", use_container_width=True) and phone_input:
+    if st.button("⚡ EXECUTE NEURAL SCAN", use_container_width=True) and phone_input:
         full_phone, local_digits = normalize_phone_for_lookup(
             COUNTRY_CODE_OPTIONS[country_label], phone_input
         )
 
         if not (7 <= len(local_digits) <= 15):
-            st.warning("⚠️ Please enter a valid phone number (7-15 digits).")
+            st.warning("⚠️ Invalid identity signature (phone digits).")
             return
 
-        if not is_valid_phone(local_digits) and len(local_digits) != 10:
-            st.info("ℹ️ Non-10-digit formats are allowed for international checks.")
-
-        st.caption(f"Normalized lookup: `{full_phone}`")
+        st.caption(f"Normalized identity: `{full_phone}`")
+        
+        # ── OSINT Results ──────────────────────────────────────────
         st.markdown(
-            '<h3 style="font-family:\'Space Grotesk\',sans-serif;font-weight:600;'
-            'color:#81ECFF;margin-top:1.5rem;margin-bottom:1rem;">🔗 OSINT Search Links</h3>',
-            unsafe_allow_html=True,
+            '<p class="small-caps" style="color:#00f5ff; margin:2rem 0 1rem 0;">'
+            "● OSINT INTELLIGENCE DECRYPTION LINKS</p>",
+            unsafe_allow_html=True
         )
 
         osint_links = generate_osint_dorks(full_phone)
@@ -114,43 +119,42 @@ def run_phone_checker():
             with cols[idx]:
                 st.markdown(
                     f'<a href="{url}" target="_blank" style="text-decoration:none!important;">'
-                    f'<div style="background:linear-gradient(135deg,rgba(27,32,40,0.8),rgba(15,20,26,0.9));'
-                    f"border:1px solid rgba(114,117,125,0.15);border-radius:10px;padding:1rem;text-align:center;"
-                    f'cursor:pointer;">'
-                    f'<p style="font-size:1.5rem;margin:0 0 .4rem 0;">{icon}</p>'
-                    f"<p style=\"font-family:'Manrope',sans-serif;font-size:.88rem;font-weight:600;"
-                    f'color:#81ECFF;margin:0 0 .2rem 0;">{engine}</p>'
-                    f"<p style=\"font-family:'Inter',sans-serif;font-size:.65rem;color:#72757D;"
-                    f'text-transform:uppercase;letter-spacing:.05em;margin:0;">OPEN SEARCH →</p>'
+                    f'<div class="glass-card bio-card" style="text-align:center; padding:1rem !important; cursor:pointer;">'
+                    f'<p style="font-size:1.5rem; margin:0 0 .4rem 0;">{icon}</p>'
+                    f"<p style=\"font-family:'Space Grotesk',sans-serif; font-size:.88rem; font-weight:600; color:#81ECFF; margin:0 0 .2rem 0;\">{engine}</p>"
+                    f"<p class=\"small-caps\" style=\"color:#72757D; margin:0;\">OPEN SCAN →</p>"
                     f"</div></a>",
                     unsafe_allow_html=True,
                 )
 
+        # ── Offline Results ─────────────────────────────────────────
         st.markdown(
-            '<h3 style="font-family:\'Space Grotesk\',sans-serif;font-weight:600;'
-            'color:#81ECFF;margin-top:1.5rem;margin-bottom:1rem;">🛡️ Offline Leak Database</h3>',
-            unsafe_allow_html=True,
+            '<p class="small-caps" style="color:#BF95FF; margin:2rem 0 1rem 0;">'
+            "● OFFLINE LEAK PERSISTENCE REPORT</p>",
+            unsafe_allow_html=True
         )
         offline_leaks = lookup_offline_leak(full_phone, allow_legacy_suffix_match=False)
         if offline_leaks:
-            st.error(f"🚨 **BREACH DETECTED** — {len(offline_leaks)} breach sample(s):")
+            st.markdown(
+                f'<div class="glass-card" style="border-left:4px solid #FF716C !important;">'
+                f'<p class="small-caps" style="color:#FF716C;">🚨 CRITICAL: LEAK EVIDENCE DETECTED ({len(offline_leaks)})</p>',
+                unsafe_allow_html=True
+            )
             for item in offline_leaks:
                 safe_item = escape(str(item))
                 st.markdown(
-                    f'<div style="background:rgba(255,113,108,0.06);border-left:3px solid #FF716C;'
-                    f"border-radius:6px;padding:.5rem .75rem;margin:.3rem 0;"
-                    f"font-family:'Manrope',sans-serif;font-size:.88rem;color:#FFA8A3;\">"
-                    f"● {safe_item}</div>",
-                    unsafe_allow_html=True,
+                    f'<div style="background:rgba(255,113,108,0.05); border-radius:6px; padding:0.6rem 0.8rem; margin:0.4rem 0; font-family:\'Inter\',sans-serif; font-size:0.85rem; color:#FFA8A3;">'
+                    f'● {safe_item}</div>',
+                    unsafe_allow_html=True
                 )
+            st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.info(
-                "ℹ️ No offline evidence found in the local database. Use OSINT links for manual verification."
+            st.markdown(
+                '<div class="glass-card" style="border-left:4px solid #4ade80 !important;">'
+                '<p class="small-caps" style="color:#4ade80;">✅ STATUS: NO LOCAL DISCOVERIES</p>'
+                '<p style="color:#94a3b8; font-size:0.85rem; margin-top:0.5rem;">The identity was not located in the offline leak database core.</p>'
+                '</div>',
+                unsafe_allow_html=True
             )
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    i1, i2 = st.columns(2)
-    with i1:
-        st.markdown(_glass_card("#00E5FF", "OSINT SEARCH ENGINES", "DuckDuckGo · Bing · Google", "#F1F3FC", "Dork-based paste-site recon"), unsafe_allow_html=True)
-    with i2:
-        st.markdown(_glass_card("#10B981", "OFFLINE LEAK DATABASE", "● Ready to Scan", "#10B981", "Local JSON breach samples"), unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)

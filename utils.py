@@ -10,6 +10,8 @@ from io import BytesIO
 from urllib.parse import quote
 
 LEAK_DB_PATH = "leak_database.json"
+VALID_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff")
+VALID_IMAGE_UPLOAD_TYPES = tuple(ext.lstrip(".") for ext in VALID_IMAGE_EXTENSIONS)
 
 # ====================
 # 🔐 VALIDATORS
@@ -37,8 +39,8 @@ def is_valid_image_file(filename: str) -> bool:
     """
     Check if uploaded file is a valid image file
     """
-    valid_extensions = [".jpg", ".jpeg", ".png", ".bmp"]
-    return any(filename.lower().endswith(ext) for ext in valid_extensions)
+    extension = os.path.splitext(str(filename or ""))[1].strip().lower()
+    return extension in VALID_IMAGE_EXTENSIONS
 
 # ==========================
 # 📦 LOCAL DATABASE HANDLING

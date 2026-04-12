@@ -8,3 +8,6 @@ numpy
 torch
 torchvision
 facenet-pytorch
+wikipedia-api
+lxml
+fpdf2
